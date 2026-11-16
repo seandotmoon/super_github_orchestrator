@@ -12,3 +12,4 @@ venv/
 .orchestrator/
 *.sqlite
 .DS_Store
+.omo
