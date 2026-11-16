@@ -9,13 +9,14 @@ description = "Serial GitHub issue orchestrator that drives OpenCode agents to i
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-  "langgraph>=0.2.0",
-  "langgraph-checkpoint-sqlite>=2.0.0",
+  "langgraph>=1.0.0,<2",
+  "langgraph-checkpoint-sqlite>=3.0.0,<4",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest>=8.0.0",
+  "mypy>=1.10.0",
 ]
 
 [project.scripts]
@@ -31,6 +32,14 @@ include = [
   "tests",
   "README.md",
 ]
+
+[tool.mypy]
+mypy_path = "src"
+files = ["src", "tests"]
+
+[[tool.mypy.overrides]]
+module = "super_orchestrator.*"
+strict = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
