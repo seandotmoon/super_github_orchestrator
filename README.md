@@ -6,7 +6,7 @@ OpenCode does the model work. This package is a LangGraph control loop only (no 
 
 ## Assumptions
 
-- Runs **inside a container** where `opencode`, `gh`, and `git` are already on `PATH`.
+- `opencode`, `gh`, and `git` are on `PATH`. A container is optional; [Docker](#docker) is one way to get that environment.
 - The **target repository** (the app under change) is a separate git checkout passed as `--workdir`.
 - That checkout already has project subagents under `.opencode/agent/` (or `.opencode/agents/`), such as `impl-backend`, `impl-frontend`, `test`, and `review`.
 - You have copied the primary agents and skills from [`templates/target/.opencode/`](templates/target/.opencode/) into the target repo.
@@ -161,6 +161,34 @@ Exit code is `0` when every issue was closed, `1` on a halt, an error, or when a
 
 ## Loop
 
+```mermaid
+flowchart TD
+    Start([Start / Resume]) --> LoadIssues[load_issues<br/>list eligible open issues]
+
+    LoadIssues -->|queue empty| Done([Done])
+    LoadIssues -->|has issues| Prepare[prepare_issue]
+
+    Prepare -->|open orchestrator PR exists| Review[review<br/>opencode pr-reviewer]
+    Prepare -->|no PR| Implement[implement<br/>opencode issue-worker]
+
+    Implement -->|timeout, slices left| Implement
+    Implement -->|PR_READY| Review
+    Implement -->|error / no sentinel / slices exhausted| Halt{on-halt?}
+
+    Review -->|APPROVE| WaitMerge[wait for merge<br/>up to merge-wait]
+    Review -->|REQUEST_CHANGES<br/>and under max-rounds| Implement
+    Review -->|error / timeout / max-rounds| Halt
+
+    WaitMerge -->|merged| Close[close_issue]
+    WaitMerge -->|closed without merge / timeout| Halt
+
+    Close --> LoadIssues
+
+    Halt -->|stop| Stopped([Halted])
+    Halt -->|skip| FailIssue[fail_issue<br/>label + comment]
+    FailIssue --> LoadIssues
+```
+
 1. List eligible open issues (`gh issue list`), lowest number first; skip `--skip-label`, unlisted authors, and (if set) issues without `--require-label`.
 2. If an open PR authored by the `gh` user already exists on branch `issue-<n>-…` in the same repo, skip implement and go to review.
 3. Otherwise run `opencode run --agent issue-worker --auto --format json …` and wait.
@@ -172,7 +200,7 @@ Exit code is `0` when every issue was closed, `1` on a halt, an error, or when a
 
 ## Resume
 
-State is checkpointed after every step. If the process dies mid-run (container killed, crash), the next invocation with the same `--thread-id` resumes at the node that was running, using the settings saved with that run. Pass `--fresh` to discard it. A run that finished (done or halted) always starts fresh: the queue is reloaded from GitHub, and an issue with an existing orchestrator PR goes straight to review.
+State is checkpointed after every step. If the process dies mid-run (killed, crash), the next invocation with the same `--thread-id` resumes at the node that was running, using the settings saved with that run. Pass `--fresh` to discard it. A run that finished (done or halted) always starts fresh: the queue is reloaded from GitHub, and an issue with an existing orchestrator PR goes straight to review.
 
 Progress and resume state live under the target workdir. Preflight adds `/.orchestrator/` to the checkout's local `.git/info/exclude` so agents never commit it:
 
